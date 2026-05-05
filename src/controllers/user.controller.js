@@ -1,14 +1,13 @@
-import { asyncHandler } from "../utils/asyncHandler";
-import { ApiError } from "../utils/ApiError";
-import { User } from "../models/user.models";
-import { uploadOnCloudinary } from "../utils/cloudinary";
-import { ApiResponse } from "../utils/ApiResponse";
+import { asyncHandler } from "../utils/asyncHandler.js";
+import { ApiError } from "../utils/ApiError.js";
+import { User } from "../models/user.models.js";
+import { uploadOnCloudinary } from "../utils/cloudinary.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
 
 const registerUser = asyncHandler(async(req, res) => {
     // res.status(500).json({
     //     message: 'user registered'
     // })
-
     //get user details from frontend
     const {fullName, userName, email, password} = req.body
 
@@ -23,7 +22,8 @@ const registerUser = asyncHandler(async(req, res) => {
 
     //check for images
     const avatarLocalPath = req.files?.avatar[0]?.path
-    const coverImageLocalPath = req.files?.coverImage[0]?.path
+    let coverImageLocalPath 
+    if(req.files && Array.isArray(req.files.coverImage) && req.files.coverImage.length > 0) coverImageLocalPath = req.files?.coverImage[0]?.path
     if(!avatarLocalPath)    throw new ApiError(400, 'Avatar Field is required!')
 
     //upload images
@@ -36,7 +36,7 @@ const registerUser = asyncHandler(async(req, res) => {
         fullName, 
         avatar: avatarImageLink.url,
         coverImage: coverImageLink?.url || '',
-        username: userName.toLowercase(), 
+        username: String(userName).toLowerCase(), 
         email,
         password
     })
