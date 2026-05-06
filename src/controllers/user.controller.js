@@ -3,7 +3,7 @@ import { ApiError } from "../utils/ApiError.js";
 import { User } from "../models/user.models.js";
 import { deleteCloudinaryFile, uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
-import {jwt} from "jsonwebtoken"
+import jwt from "jsonwebtoken"
 
 const options = {
     httpOnly: true,
@@ -35,8 +35,13 @@ const registerUser = asyncHandler(async(req, res) => {
     if([fullName, userName, email, password].some((field) => field?.trim() === '')) throw new ApiError(400, "All Fields are required!")
 
     ///check user already exsists
+    const conditions = [
+        userName ? { userName } : null,
+        email ? { email } : null
+    ].filter(Boolean); // Removes the nulls
+
     const existedUser = await User.findOne({
-        $or: [{userName}, {email}]
+        $or: conditions
     })
     if(existedUser) throw new ApiError(400, 'User already exists!')
 
@@ -76,9 +81,15 @@ const loginUser = asyncHandler(async(req, res) => {
 
     if(!(userName || email))    throw new ApiError(400, 'All fields are required!')
     
+    const conditions = [
+        userName ? { userName } : null,
+        email ? { email } : null
+    ].filter(Boolean); 
+    
     const existedUser = await User.findOne({
-        $or: [{userName}, {email}]
+        $or: conditions
     })
+    
     if(!existedUser)    throw new ApiError(401, 'User does not exist!')
 
     const isPasswordValid = await existedUser.isPasswordCorrect(password)
@@ -179,15 +190,17 @@ const updateUserAvatar = asyncHandler(async(req, res) => {
 const updateUserCoverImage = asyncHandler(async(req, res) => {
     try{
         const coverImageLocalPath = req.file?.path
-        if(!coverImageLocalPath)    throw new ApiError(400, 'cover image file missing') 
 
         const user = await User.findById(req.user?._id)
         const prevCoverImagePath = user.coverImage
 
-        const coverImage = await uploadOnCloudinary(coverImageLocalPath)
-        if(!coverImage.url) throw new ApiError(400, 'error uploading cover image file') 
+        let coverImage
+        if(coverImageLocalPath) coverImage = await uploadOnCloudinary(coverImageLocalPath)
+        if(coverImage && coverImage.url) throw new ApiError(400, 'error uploading cover image file') 
+        
+        if(coverImage && coverImage.url)    user.coverImage = coverImage.url
+        else    user.coverImage = ''
 
-        user.coverImage = coverImage.url
         await user.save({validateBeforeSave: false})
 
         if(prevCoverImagePath)  await deleteCloudinaryFile(prevCoverImagePath)
@@ -202,10 +215,10 @@ const updateUserCoverImage = asyncHandler(async(req, res) => {
 
 
 const refreshAccessToken = asyncHandler(async(req, res) => {
-    const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken
-    if(!incomingRefreshToken) throw new ApiError(401, 'unauthorized request')
-
     try {
+        const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken
+        if(!incomingRefreshToken) throw new ApiError(401, 'unauthorized request')
+
         const decodedToken = jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET)
 
         const user = await User.findById(decodedToken?._id)
@@ -213,7 +226,7 @@ const refreshAccessToken = asyncHandler(async(req, res) => {
         
         if(incomingRefreshToken !== user?.refreshToken) throw new ApiError(401, "Refresh Token is expired or used")
         
-        const {accessToken, newRefreshToken} = await generateAccessAndRefreshToken(user)
+        const {accessToken, refreshToken: newRefreshToken} = await generateAccessAndRefreshToken(user)
 
         return res.status(200)
             .cookie("accessToken", accessToken, options)

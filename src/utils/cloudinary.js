@@ -1,5 +1,6 @@
 import { v2 as cloudinary } from "cloudinary";
 import fs from 'fs'
+import { ApiError } from "./ApiError.js";
 
 cloudinary.config({ 
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME, 
@@ -29,11 +30,17 @@ const uploadOnCloudinary = async(localFilePath) => {
 const deleteCloudinaryFile = async(cloudinaryFilePath) => {
     try{
         if(!cloudinaryFilePath) return null
-        const publicId = cloudinaryFilePath.split('/').pop().split('.')[0]
+        const getPublicIdFromUrl = (url) => {
+            // Regex captures everything after 'upload/' (ignoring 'v12345/') until the file extension
+            const regex = /\/upload\/(?:v\d+\/)?([^\.]+)/;
+            const match = url.match(regex);
+            return match ? match[1] : null;
+        };
+        const publicId = getPublicIdFromUrl(cloudinaryFilePath)
+        if(!publicId)   throw new ApiError(400, 'error deleting image')
 
-        const deleteResult = await cloudinary.uploader.destroy(cloudinaryFilePath, {invalidate: true})
+        const deleteResult = await cloudinary.uploader.destroy(publicId, {invalidate: true})
 
-        console.log('file has been deleted: ', deleteResult)
         return deleteResult
     }
     catch(error){
@@ -42,3 +49,4 @@ const deleteCloudinaryFile = async(cloudinaryFilePath) => {
 }
 
 export {uploadOnCloudinary, deleteCloudinaryFile}
+//ekj8a9tvrcwlcxfol47l
