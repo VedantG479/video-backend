@@ -4,6 +4,7 @@ import { User } from "../models/user.models.js";
 import { deleteCloudinaryFile, uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken"
+import mongoose from "mongoose";
 
 const options = {
     httpOnly: true,
@@ -106,8 +107,8 @@ const loginUser = asyncHandler(async(req, res) => {
 
 const logoutUser = asyncHandler(async(req, res) => {
     await User.findByIdAndUpdate(req.user._id, {
-        $set: {
-            refreshToken: undefined
+        $unset: {
+            refreshToken: 1
         }
     }, {
         new: true
@@ -213,6 +214,114 @@ const updateUserCoverImage = asyncHandler(async(req, res) => {
     }
 })
 
+const getUserChannelProfile = asyncHandler(async(req, res) => {
+    const {username} = req.params
+    if(!username?.trim())   throw new ApiError(400, 'enter a valid username')
+    
+    const channel = await User.aggregate([
+        {
+            $match: {
+                username: username?.toLowerCase()
+            }
+        }, 
+        {
+            $lookup: {
+                from : 'users', 
+                localField: '_id', 
+                foreignField: 'channel', 
+                as: 'subscribers'
+            }
+        },
+        {
+            $lookup: {
+                from :'users', 
+                localField: '_id', 
+                foreignField: 'subscriber',
+                as: 'subscribedTo'
+            }
+        }, 
+        {
+            $addFields: {
+                subscibersCount: {
+                    $size: '$subscribers'
+                }, 
+                subscribedToCount: {
+                    $size: '$subscribedTo'
+                }, 
+                isSubscribed: {
+                    $cond: {
+                        if: {$in: [req.user?._id, '$subscribers.subscriber']},
+                        then: true, 
+                        else: false
+                    }
+                }
+            }
+        }, 
+        {
+            $project: {
+                username: 1, 
+                fullName: 1, 
+                avatar: 1, 
+                coverImage: 1,
+                subscibersCount: 1, 
+                subscribedToCount: 1, 
+                isSubscribed: 1
+            }
+        }
+    ])
+    console.log(channel)
+
+    if(!channel?.length)    throw new ApiError(404, 'error fetching channel')
+    return res.status(200)
+        .json(new ApiResponse(200, channel[0], 'channel details fetched successfully'))
+})
+
+const getWatchHistory = asyncHandler(async(req, res) => {
+    const user = User.aggregate([
+        {
+            $match: {
+                _id: new mongoose.Types.ObjectId(req.user._id)
+            }
+        }, 
+        {
+            $lookup: {
+                from: 'videos', 
+                localField: 'watchHistory', 
+                foreignField: '_id',
+                as: 'watchHistory', 
+                pipeline: [
+                    {
+                        $lookup: {
+                            from: 'users', 
+                            localField: 'owner', 
+                            foreignField: '_id',
+                            as: 'owner',
+                            pipeline: [
+                                {
+                                    $project: {
+                                        fullName: 1,
+                                        userName: 1,
+                                        avatar: 1
+                                    }
+                                }
+                            ]
+                        }
+                    }, 
+                    {
+                        $addFields: {
+                            owner: {
+                                $first: '$owner'
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    ])
+
+    return res.status(200)
+        .json(new ApiResponse(200, user[0].watchHistory, 'watch history fetched successfully'))
+})
 
 const refreshAccessToken = asyncHandler(async(req, res) => {
     try {
@@ -238,4 +347,16 @@ const refreshAccessToken = asyncHandler(async(req, res) => {
     }
 })
 
-export {registerUser, loginUser, logoutUser, refreshAccessToken, changeCurrentPassword, getCurrentUser, updateAccountDetails, updateUserAvatar, updateUserCoverImage} 
+export {
+    registerUser, 
+    loginUser, 
+    logoutUser, 
+    refreshAccessToken, 
+    changeCurrentPassword, 
+    getCurrentUser, 
+    updateAccountDetails, 
+    updateUserAvatar, 
+    updateUserCoverImage, 
+    getUserChannelProfile, 
+    getWatchHistory
+} 
